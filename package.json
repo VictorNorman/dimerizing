@@ -1,0 +1,20 @@
+{
+  "name": "dimerizing",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A fast 2D hard-disk dimerizing gas (2A <=> B) on canvas.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "check": "node --experimental-strip-types scripts/check.ts",
+    "smoke": "node scripts/smoke.mjs",
+    "test": "npm run check && npm run build && npm run smoke"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}

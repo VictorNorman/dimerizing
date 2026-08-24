@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dimerizing Gas — 2A ⇌ B</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Dimerizing Gas <span class="reaction">2A &#8652; B</span></h1>
+      <div class="perf">
+        <span id="perf-steps">—</span>
+        <span class="sep">·</span>
+        <span id="perf-fps">—</span>
+        <span class="sep">·</span>
+        <span id="perf-particles">—</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="stage">
+        <canvas id="world"></canvas>
+      </section>
+
+      <aside class="panel">
+        <div class="buttons">
+          <button id="btn-setup" class="btn">Setup</button>
+          <button id="btn-go" class="btn btn-primary">Go</button>
+          <button id="btn-step" class="btn">Step</button>
+        </div>
+
+        <div class="monitors">
+          <div class="monitor"><span class="mon-label"># of A</span><span class="mon-value" id="mon-a">0</span></div>
+          <div class="monitor"><span class="mon-label"># of B</span><span class="mon-value" id="mon-b">0</span></div>
+          <div class="monitor">
+            <span class="mon-label">A + 2&times;B <em>(conserved)</em></span>
+            <span class="mon-value" id="mon-total">0</span>
+          </div>
+          <div class="monitor">
+            <span class="mon-label">temperature (measured)</span>
+            <span class="mon-value" id="mon-temp">0</span>
+          </div>
+          <div class="monitor">
+            <span class="mon-label">Kc = B/A&sup2; <em>(&times;10&#8308;)</em></span>
+            <span class="mon-value" id="mon-kc">0</span>
+          </div>
+          <div class="monitor">
+            <span class="mon-label">ticks</span>
+            <span class="mon-value" id="mon-ticks">0</span>
+          </div>
+        </div>
+
+        <div class="sliders" id="sliders"><!-- built by main.ts --></div>
+      </aside>
+    </main>
+
+    <section class="plots">
+      <figure class="plot">
+        <figcaption>Populations</figcaption>
+        <canvas id="plot-pop"></canvas>
+      </figure>
+      <figure class="plot">
+        <figcaption>Equilibrium Constant</figcaption>
+        <canvas id="plot-kc"></canvas>
+      </figure>
+      <figure class="plot">
+        <figcaption>Speed Distribution</figcaption>
+        <canvas id="plot-speed"></canvas>
+      </figure>
+    </section>
+
+    <details class="info">
+      <summary>About this model</summary>
+      <div class="info-body">
+        <p>
+          A hard-sphere gas in a box, with one addition: the reversible reaction
+          <strong>2A &#8652; B</strong>. Two A particles (blue) that collide may fuse into
+          one B particle (red, drawn larger — twice the mass, twice the radius, so it gets
+          hit more often), and a B that hits anything — another particle or a wall — may
+          fall back apart into two A's. <code>dimerization&#8209;chance</code> and
+          <code>dissociation&#8209;chance</code> set how likely each event is, per collision.
+        </p>
+        <p>
+          This is a demonstration of <strong>dynamic equilibrium</strong>: individual
+          molecules keep reacting in both directions constantly, but the populations settle
+          into a stable balance where the forward and reverse rates match.
+          <code>A&nbsp;+&nbsp;2B</code> never changes — only how the mass is distributed
+          between the two species. If the reaction behaves like real mass-action chemistry,
+          <code>B/A&sup2;</code> should hold roughly steady once equilibrium is reached,
+          however you got there — try <code>initial&#8209;B = 0</code> versus starting with
+          some B already present.
+        </p>
+        <p>
+          Collisions are exact hard-disk contacts, and they are resolved by solving for the
+          instant the two disks touched, so what you see is exactly what collides. Ordinary
+          collisions conserve momentum and kinetic energy exactly; only the reactive events
+          exchange energy with an ambient bath at <code>temperature</code> (forming a bond
+          releases the pair's relative kinetic energy, breaking one draws a thermal kick
+          back in). Temperature and mass are in reduced units — temperature <em>is</em> the
+          average kinetic energy per particle, with k<sub>B</sub> = 1 — not real kelvin and amu.
+        </p>
+        <p class="credit">
+          Port of <code>models/dimerizing_gas.py</code> from netlogo-py. Collision handling
+          follows <a href="https://www.falstad.com/gas/gas.html">Paul Falstad's gas applet</a>.
+        </p>
+      </div>
+    </details>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
