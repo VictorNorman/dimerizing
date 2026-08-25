@@ -1,5 +1,5 @@
 import './styles.css';
-import { Sim, type Params, type Stats } from './sim';
+import { Sim, A_RADIUS, B_RADIUS, type Params, type Stats } from './sim';
 import { Renderer, COLOR_A, COLOR_B } from './render';
 import { HistogramPlot, TimeSeriesPlot } from './plots';
 
@@ -15,7 +15,7 @@ interface SliderDef {
   step: number;
   value: number;
   units?: string;
-  /** Read only by setup(), so the UI says so rather than silently ignoring drags. */
+  /** Read only by setup(); drags are held in `pending` until the next Initiate. */
   deferred?: boolean;
   format?: (v: number) => string;
 }
@@ -43,7 +43,7 @@ const SLIDERS: SliderDef[] = [
     key: 'particleMass',
     label: 'particle-mass (A)',
     min: 1,
-    max: 10,
+    max: 60,
     step: 1,
     value: 2,
     units: 'amu',
@@ -51,7 +51,7 @@ const SLIDERS: SliderDef[] = [
   },
   {
     key: 'temperature',
-    label: 'temperature',
+    label: 'initial temperature',
     min: 1,
     max: 500,
     step: 1,
@@ -78,12 +78,12 @@ const SLIDERS: SliderDef[] = [
   },
   {
     key: 'boxSize',
-    label: 'box size',
+    label: 'operating area',
     min: 5,
     max: 100,
     step: 1,
     value: 100,
-    units: '% of world area',
+    units: '% of maximum area',
     deferred: true,
   },
   {
@@ -107,14 +107,23 @@ const params: Params = {
   boxSize: 100,
 };
 
-/** Values of the deferred sliders as dragged, applied at the next Setup. */
+/** Values of the deferred sliders as dragged, applied at the next Initiate. */
 const pending: Partial<Params> = {};
 let ticksPerSecond = 25;
+
+/**
+ * Every slider that describes the experiment rather than the viewing of it.
+ * Changing one of these mid-run either does nothing until the next Initiate
+ * or silently redefines the conditions a run is already partway through, so
+ * they are locked while the sim is going. `simulation speed` stays live: it
+ * only sets how fast you watch.
+ */
+const lockedRows: { row: HTMLElement; input: HTMLInputElement }[] = [];
 
 function buildSliders(host: HTMLElement): void {
   for (const def of SLIDERS) {
     const row = document.createElement('div');
-    row.className = 'slider-row' + (def.deferred ? ' deferred' : '');
+    row.className = 'slider-row';
 
     const head = document.createElement('div');
     head.className = 'slider-head';
@@ -134,7 +143,14 @@ function buildSliders(host: HTMLElement): void {
 
     const show = (v: number) => {
       const text = def.format ? def.format(v) : String(v);
-      val.textContent = def.units ? `${text} ${def.units}` : text;
+      if (!def.units) {
+        val.textContent = text;
+        return;
+      }
+      // A percent sign binds to its number -- "100% of maximum area", not
+      // "100 % of ...". Every other unit reads as a separate word.
+      const gap = def.units.startsWith('%') ? '' : ' ';
+      val.textContent = `${text}${gap}${def.units}`;
     };
     show(def.value);
 
@@ -152,6 +168,20 @@ function buildSliders(host: HTMLElement): void {
 
     row.append(head, input);
     host.append(row);
+    if (def.key !== 'ticksPerSecond') {
+      lockedRows.push({
+        row,
+        input,
+      });
+    }
+  }
+}
+
+/** Locks the experiment sliders while the sim is running; see `lockedRows`. */
+function setSlidersLocked(locked: boolean): void {
+  for (const { row, input } of lockedRows) {
+    input.disabled = locked;
+    row.classList.toggle('locked', locked);
   }
 }
 
@@ -169,19 +199,38 @@ const el = <T extends HTMLElement>(id: string): T => {
 
 buildSliders(el('sliders'));
 
+/**
+ * Diameter of the smaller species' swatch. The other is scaled off the real
+ * radii, so the two dots beside the counts stand in the same 1 : cbrt(2)
+ * proportion as the particles on the canvas.
+ */
+const DOT_A_PX = 10;
+
+function paintDot(id: string, color: string, radius: number): void {
+  const dot = el(id);
+  const px = DOT_A_PX * (radius / A_RADIUS);
+  dot.style.width = `${px}px`;
+  dot.style.height = `${px}px`;
+  dot.style.background = color;
+}
+
+paintDot('dot-a', COLOR_A, A_RADIUS);
+paintDot('dot-b', COLOR_B, B_RADIUS);
+
 const sim = new Sim(params);
 const renderer = new Renderer(el<HTMLCanvasElement>('world'));
 
 const SPEED_BINS = 48;
 /**
- * How many ticks the Speed Distribution histogram averages over, matching
- * the Python model's speed_average_ticks = 5. Each sample bins one tick's
- * speeds into the shared 48-bin grid and the displayed bars are the *mean*
- * count per bin over the newest SPEED_AVERAGE_TICKS snapshots -- a true
- * pooled time average, exactly what the Python update_variables() does,
- * rather than a per-tick count that would jump around tick to tick.
+ * How many ticks the Speed Distribution histogram averages over. Each sample
+ * bins one tick's speeds into the shared 48-bin grid and the displayed bars
+ * are the *mean* count per bin over the newest SPEED_AVERAGE_TICKS snapshots
+ * -- a true pooled time average, as the Python update_variables() does,
+ * rather than a per-tick count that would jump around tick to tick. The
+ * Python model's speed_average_ticks was 5; 10 buys a visibly steadier
+ * histogram at the cost of lagging a change in conditions twice as long.
  */
-const SPEED_AVERAGE_TICKS = 5;
+const SPEED_AVERAGE_TICKS = 10;
 
 const popPlot = new TimeSeriesPlot(el<HTMLCanvasElement>('plot-pop'), {
   xLabel: 'time (ticks)',
@@ -200,9 +249,10 @@ const popPlot = new TimeSeriesPlot(el<HTMLCanvasElement>('plot-pop'), {
 
 const kcPlot = new TimeSeriesPlot(el<HTMLCanvasElement>('plot-kc'), {
   xLabel: 'time (ticks)',
-  yLabel: 'B / A² (×10⁴)',
+  yLabel: '[B] / [A]² (×10⁴)',
   pens: [{
-    label: 'Kc',
+    label: 'K',
+    sub: 'c',
     color: '#9b82d8',
   }],
   includeZero: false,
@@ -247,8 +297,6 @@ const monTotal = el('mon-total');
 const monTemp = el('mon-temp');
 const monKc = el('mon-kc');
 const monTicks = el('mon-ticks');
-const perfSteps = el('perf-steps');
-const perfFps = el('perf-fps');
 const perfParticles = el('perf-particles');
 
 /** Three significant figures, matching the Python monitor's sig_figs=3. */
@@ -294,7 +342,7 @@ function sample(): void {
   const bars = speedPlot.binArrays;
   // Each bar is the *mean* count per bin across the window -- scale=1/len
   // -- so early in a run, when the window is short, the bars still read as
-  // real molecule counts rather than starting out five times too short.
+  // real molecule counts rather than starting out a windowful too short.
   const windowScale = 1 / speedHistory.length;
   for (let i = 0; i < SPEED_BINS; i++) {
     let sumA = 0;
@@ -341,6 +389,7 @@ function setRunning(on: boolean): void {
   running = on;
   goButton.textContent = on ? 'Stop' : 'Go';
   goButton.classList.toggle('running', on);
+  setSlidersLocked(on);
 }
 
 el('btn-setup').addEventListener('click', () => {
@@ -397,8 +446,6 @@ const MAX_FRAME_MS = 100;
 let refreshMs = 1000 / 60;
 
 let lastFrameMs = 0;
-let stepsSinceMeasure = 0;
-let framesSinceMeasure = 0;
 let measureStart = performance.now();
 
 // The timestamp is always supplied by requestAnimationFrame; the default
@@ -424,7 +471,6 @@ function frame(now: number = performance.now()): void {
     let sinceCheck = 0;
     while (sim.ticks < target) {
       sim.step();
-      stepsSinceMeasure++;
       if (sim.ticks >= nextSampleTick) {
         sample();
         nextSampleTick = Math.floor(sim.ticks) + 1;
@@ -444,15 +490,10 @@ function frame(now: number = performance.now()): void {
 
   renderer.draw(sim);
 
-  framesSinceMeasure++;
-  const elapsed = now - measureStart;
-  if (elapsed >= 500) {
-    const sps = (stepsSinceMeasure * 1000) / elapsed;
-    perfSteps.textContent = `${Math.round(sps).toLocaleString()} steps/s`;
-    perfFps.textContent = `${Math.round((framesSinceMeasure * 1000) / elapsed)} fps`;
+  // The population changes only through reactions, so refreshing it on a
+  // 500 ms window rather than every frame keeps the text from flickering.
+  if (now - measureStart >= 500) {
     perfParticles.textContent = `${sim.count.toLocaleString()} particles`;
-    stepsSinceMeasure = 0;
-    framesSinceMeasure = 0;
     measureStart = now;
   }
 }

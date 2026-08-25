@@ -46,7 +46,14 @@ export const MAX_PXCOR = 40;
  * particles collide when their disks genuinely overlap.
  */
 export const A_RADIUS = 0.25;
-export const B_RADIUS = 0.5;
+/**
+ * A B is one A's worth of matter twice over, so it takes up twice the space:
+ * cbrt(2) ~ 1.26 times the radius, the ratio that makes the two *volumes*
+ * 1:2. (The disks on screen are a 2D window onto 3D molecules -- scaling the
+ * drawn areas 1:2 instead would need sqrt(2), and would mean a dimer whose
+ * density differs from its monomers'.)
+ */
+export const B_RADIUS = A_RADIUS * Math.cbrt(2);
 
 /** The widest two centers can be and still touch (B + B). */
 const MAX_CONTACT_DISTANCE = 2 * B_RADIUS;
@@ -64,6 +71,14 @@ const MAX_TICK_DELTA = 0.1073;
  * which lets fast A pairs tunnel straight through one another.
  */
 const MAX_STEP_DISPLACEMENT = 0.2;
+
+/**
+ * How many random axes a splitting B may try before the reaction is declined
+ * for lack of room. A B wedged against one neighbor usually still has a free
+ * line to come apart along, so a single draw would refuse far more splits
+ * than the geometry actually forbids.
+ */
+const SPLIT_ORIENTATION_TRIES = 6;
 
 export interface Params {
   /** Number of A particles created by setup. */
@@ -429,7 +444,13 @@ export class Sim {
 
       if (hitWall && species[i] === SPECIES_B && Math.random() * 100 < dissociationChance) {
         // Bounce first, then break apart: the fragments inherit a velocity
-        // that already points away from the wall.
+        // that already points away from the wall. A declined split (no room
+        // for the fragments) just leaves the B bounced.
+        //
+        // The room check here reads a grid built before this pass moved
+        // anything, so it is judging positions up to MAX_STEP_DISPLACEMENT
+        // stale. That is a slightly blurred veto, not a wrong one -- the
+        // exact test runs in resolveCollisions() once the grid is current.
         this.dissociate(i);
       }
     }
@@ -654,13 +675,13 @@ export class Sim {
     } else {
       // At least one B. Each B rolls independently, so a B+B contact can
       // break either, both, or neither.
+      // dissociate() declines when the fragments have nowhere to go, in
+      // which case the contact falls through to an ordinary bounce.
       let reacted = false;
-      if (!aIsA && Math.random() * 100 < this.params.dissociationChance) {
-        this.dissociate(i);
+      if (!aIsA && Math.random() * 100 < this.params.dissociationChance && this.dissociate(i)) {
         reacted = true;
       }
-      if (!bIsA && this.alive[j] && Math.random() * 100 < this.params.dissociationChance) {
-        this.dissociate(j);
+      if (!bIsA && this.alive[j] && Math.random() * 100 < this.params.dissociationChance && this.dissociate(j)) {
         reacted = true;
       }
       if (reacted) {
@@ -841,7 +862,7 @@ export class Sim {
       cy = -reach;
     }
 
-    // A B is twice the radius of the A's it replaces, so it can stick out
+    // A B is wider than the A's it replaces, so it can stick out
     // into a bystander that neither A was touching. Rather than let it be
     // born interpenetrating -- which looks wrong and can only be undone by
     // the two drifting back apart -- decline the reaction when the space
@@ -910,14 +931,15 @@ export class Sim {
    * current temperature: momentum is conserved, and the fragments fly apart
    * with a random-direction relative velocity sized by thermal_speed() on
    * the pair's reduced mass.
+   *
+   * Returns false when there is nowhere to put the fragments, in which case
+   * nothing changes and the caller should treat the contact as an ordinary
+   * bounce -- the mirror of combine()'s excluded-volume veto.
    */
-  private dissociate(b: number): void {
+  private dissociate(b: number): boolean {
     const childMass = this.mass[b] / 2;
     const reducedMass = childMass / 2;
     const kickSpeed = this.thermalSpeed(reducedMass);
-    const theta = Math.random() * 2 * Math.PI;
-    const kickX = (kickSpeed / 2) * Math.cos(theta);
-    const kickY = (kickSpeed / 2) * Math.sin(theta);
     const comVx = this.vx[b];
     const comVy = this.vy[b];
     const x = this.x[b];
@@ -926,15 +948,51 @@ export class Sim {
     // Born touching rather than coincident, offset along the kick axis, so
     // the pair starts out exactly at contact and already moving apart.
     const offset = A_RADIUS + 1e-6;
-    const kickLen = Math.hypot(kickX, kickY) || 1;
-    const offX = (kickX / kickLen) * offset;
-    const offY = (kickY / kickLen) * offset;
+    const reach = this.innerBound - A_RADIUS;
+
+    // Two A's born touching span 2*A_RADIUS from the parent's center, but a
+    // B only reaches A_RADIUS*cbrt(2) -- the radius that puts the dimer at
+    // twice a monomer's volume. A split therefore claims space the dimer
+    // never occupied, which a bystander is entitled to be sitting in, so the
+    // room has to be checked rather than assumed. The axis is random, and a
+    // B blocked along one line usually has room along another, so decline
+    // only after several draws have all failed.
+    let theta = 0;
+    let offX = 0;
+    let offY = 0;
+    let room = false;
+    for (let tries = 0; tries < SPLIT_ORIENTATION_TRIES; tries++) {
+      theta = Math.random() * 2 * Math.PI;
+      offX = Math.cos(theta) * offset;
+      offY = Math.sin(theta) * offset;
+      const x1 = x + offX;
+      const y1 = y + offY;
+      const x2 = x - offX;
+      const y2 = y - offY;
+      // Reject an axis that would put a fragment through a wall rather than
+      // clamping it back: clamping is what would slide it into a neighbor.
+      if (x1 > reach || x1 < -reach || y1 > reach || y1 < -reach
+        || x2 > reach || x2 < -reach || y2 > reach || y2 < -reach) {
+        continue;
+      }
+      if (!this.wouldOverlap(x1, y1, A_RADIUS, b, b) && !this.wouldOverlap(x2, y2, A_RADIUS, b, b)) {
+        room = true;
+        break;
+      }
+    }
+    if (!room) {
+      return false;
+    }
+
+    const kickX = (kickSpeed / 2) * Math.cos(theta);
+    const kickY = (kickSpeed / 2) * Math.sin(theta);
 
     this.kill(b);
     const a1 = this.spawn(SPECIES_A, childMass, x + offX, y + offY, comVx + kickX, comVy + kickY);
     const a2 = this.spawn(SPECIES_A, childMass, x - offX, y - offY, comVx - kickX, comVy - kickY);
     this.clampIntoBox(a1);
     this.clampIntoBox(a2);
+    return true;
   }
 
   // =====================================================================

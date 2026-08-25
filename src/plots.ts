@@ -10,6 +10,7 @@ const GRID = '#232936';
 const TEXT = '#8b95a9';
 const LABEL = '#aab3c5';
 const FONT = '11px ui-sans-serif, system-ui, -apple-system, sans-serif';
+const SUB_FONT = '8px ui-sans-serif, system-ui, -apple-system, sans-serif';
 
 /** A "nice" tick step (1, 2 or 5 times a power of ten) near range/targetTicks. */
 function niceStep(range: number, targetTicks: number): number {
@@ -37,6 +38,8 @@ function formatTick(v: number, step: number): string {
 
 interface PenSpec {
   label: string;
+  /** Drawn small and low against the label, for names like K_c. */
+  sub?: string;
   color: string;
 }
 
@@ -171,7 +174,14 @@ abstract class PlotBase {
       ctx.fillRect(x, y - 4, 8, 8);
       ctx.fillStyle = LABEL;
       ctx.fillText(pen.label, x + 12, y);
-      x += 12 + ctx.measureText(pen.label).width + 14;
+      let width = ctx.measureText(pen.label).width;
+      if (pen.sub) {
+        ctx.font = SUB_FONT;
+        ctx.fillText(pen.sub, x + 12 + width, y + 3);
+        width += ctx.measureText(pen.sub).width;
+        ctx.font = FONT;
+      }
+      x += 12 + width + 14;
     }
   }
 }

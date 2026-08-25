@@ -10,10 +10,6 @@
     <header class="topbar">
       <h1>Dimerizing Gas <span class="reaction">2A &#8652; B</span></h1>
       <div class="perf">
-        <span id="perf-steps">—</span>
-        <span class="sep">·</span>
-        <span id="perf-fps">—</span>
-        <span class="sep">·</span>
         <span id="perf-particles">—</span>
       </div>
     </header>
@@ -25,14 +21,20 @@
 
       <aside class="panel">
         <div class="buttons">
-          <button id="btn-setup" class="btn">Setup</button>
+          <button id="btn-setup" class="btn">Initiate</button>
           <button id="btn-go" class="btn btn-primary">Go</button>
           <button id="btn-step" class="btn">Step</button>
         </div>
 
         <div class="monitors">
-          <div class="monitor"><span class="mon-label"># of A</span><span class="mon-value" id="mon-a">0</span></div>
-          <div class="monitor"><span class="mon-label"># of B</span><span class="mon-value" id="mon-b">0</span></div>
+          <div class="monitor">
+            <span class="mon-label"># of A<span class="dot-slot"><i class="dot" id="dot-a"></i></span></span>
+            <span class="mon-value" id="mon-a">0</span>
+          </div>
+          <div class="monitor">
+            <span class="mon-label"># of B<span class="dot-slot"><i class="dot" id="dot-b"></i></span></span>
+            <span class="mon-value" id="mon-b">0</span>
+          </div>
           <div class="monitor">
             <span class="mon-label">A + 2&times;B <em>(conserved)</em></span>
             <span class="mon-value" id="mon-total">0</span>
@@ -42,7 +44,7 @@
             <span class="mon-value" id="mon-temp">0</span>
           </div>
           <div class="monitor">
-            <span class="mon-label">Kc = B/A&sup2; <em>(&times;10&#8308;)</em></span>
+            <span class="mon-label">K<sub>c</sub> = [B]/[A]&sup2; <em>(&times;10&#8308;)</em></span>
             <span class="mon-value" id="mon-kc">0</span>
           </div>
           <div class="monitor">
@@ -76,8 +78,9 @@
         <p>
           A hard-sphere gas in a box, with one addition: the reversible reaction
           <strong>2A &#8652; B</strong>. Two A particles (blue) that collide may fuse into
-          one B particle (red, drawn larger — twice the mass, twice the radius, so it gets
-          hit more often), and a B that hits anything — another particle or a wall — may
+          one B particle (red, drawn larger — twice the mass and twice the volume, so
+          &#8731;2 &asymp; 1.26 times the radius, and it gets hit more often), and a B that
+          hits anything — another particle or a wall — may
           fall back apart into two A's. <code>dimerization&#8209;chance</code> and
           <code>dissociation&#8209;chance</code> set how likely each event is, per collision.
         </p>
@@ -87,7 +90,7 @@
           into a stable balance where the forward and reverse rates match.
           <code>A&nbsp;+&nbsp;2B</code> never changes — only how the mass is distributed
           between the two species. If the reaction behaves like real mass-action chemistry,
-          <code>B/A&sup2;</code> should hold roughly steady once equilibrium is reached,
+          <code>[B]/[A]&sup2;</code> should hold roughly steady once equilibrium is reached,
           however you got there — try <code>initial&#8209;B = 0</code> versus starting with
           some B already present.
         </p>

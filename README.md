@@ -27,44 +27,45 @@ anywhere.
 ## The model
 
 Two species share a box: **A** (blue, mass `particle-mass`, radius 0.25) and
-**B** (red, twice the mass and twice the radius, so it gets hit more often).
+**B** (red, twice the mass and twice the volume — so ∛2 ≈ 1.26 times the
+radius, and it gets hit more often).
 
 - Two A particles whose disks actually touch fuse into one B with probability
-  `dimerization-chance`. Momentum is conserved exactly; the pair's kinetic
+  `dimerization probability`. Momentum is conserved exactly; the pair's kinetic
   energy *relative* to their shared center of mass is not carried forward —
   forming a bond is exothermic, and that energy went into the bond.
 - A B that touches anything — a particle or a wall — falls apart into two A's
-  with probability `dissociation-chance`. Momentum is conserved, and the
+  with probability `dissociation probability`. Momentum is conserved, and the
   fragments fly apart with a random-direction relative velocity sized off the
-  current `temperature`: bond-breaking draws its energy from an ambient thermal
+  `initial temperature`: bond-breaking draws its energy from an ambient thermal
   bath.
 - Everything else is an ordinary elastic collision, exactly conserving both
   momentum and kinetic energy.
 
-So the gas is quasi-isothermal (coupled to a bath at `temperature`) rather than
-energy-closed — which is the right physical picture for what "B/A² should be
-constant at equilibrium" describes: a constant-temperature reaction vessel, not
-an insulated one. Mass is conserved exactly and always: `A + 2B` never changes.
+So the gas is quasi-isothermal (coupled to a bath at `initial temperature`)
+rather than energy-closed — which is the right physical picture for what
+"[B]/[A]² should be constant at equilibrium" describes: a constant-temperature
+reaction vessel, not an insulated one. Mass is conserved exactly and always: `A + 2B` never changes.
 
 The point of the model is **dynamic equilibrium**. Individual molecules keep
 reacting in both directions forever, but the populations settle into a stable
-balance where the forward and reverse rates match, and `Kc = B/A²`
+balance where the forward and reverse rates match, and `K_c = [B]/[A]²`
 holds steady however you got there. (The vessel's size is part of the
-constant because a mass-action Kc is built from concentrations, and
+constant because a mass-action K_c is built from concentrations, and
 concentration is what changes when you resize the box at a fixed particle
-count — that's why the slider is a percentage of the world's *area*, the
-volume term a Kc actually contains.) Try `initial-B = 0` against a run that
-starts with B already present — they land on the same Kc.
+count — that's why the slider is a percentage of the maximum *area*, the
+volume term a K_c actually contains.) Try `initial number of B = 0` against a
+run that starts with B already present — they land on the same K_c.
 
 ### Units
 
-`temperature` and `particle-mass` are labeled K and amu because that is the
-intuitive way to think about them, but this is not a dimensionally real physics
+`initial temperature` and `particle-mass` are labeled K and amu because that is
+the intuitive way to think about them, but this is not a dimensionally real physics
 model. There is no Boltzmann constant: temperature *is* average kinetic energy
 per particle (k_B = 1, the usual reduced-units convention in molecular
-simulation). Box size is a genuine dimensionless percentage of the world's *area*
--- the two-dimensional box shrinks each side by sqrt(percent/100), so the
-vessel's area lands on the requested percentage.
+simulation). `operating area` is a genuine dimensionless percentage of the
+maximum *area* -- the two-dimensional box shrinks each side by
+sqrt(percent/100), so the vessel's area lands on the requested percentage.
 
 ## What makes it fast
 
@@ -118,23 +119,30 @@ Five things account for it:
   already priced into the table above.
 - **Line-of-centers impulses**, as described above, rather than a random
   collision axis.
-- **Excluded volume on dimerization.** A B is twice the radius of the two A's
-  it replaces, so it can be born sticking into a bystander neither A was
-  touching. When there is no room, the reaction is declined and the pair simply
-  bounces. Without this, dimers get born interpenetrating and can only
-  untangle by drifting apart.
-- **The speed histogram** pools the newest 5 ticks' speeds into a fixed bin
-  grid and shows each bar as the *mean* count per bin across that window,
-  matching the Python model's `speed_average_ticks` time average (rather than
-  the original's pooled window whose bin edges moved every tick).
+- **Excluded volume on both reactions.** A product can be born sticking into a
+  bystander that no reactant was touching, so each direction checks for room
+  first and declines the reaction when there is none — the contact just
+  bounces. Forming a dimer tests the one point the B would occupy. Splitting
+  one tests both fragment positions, and tries several random axes before
+  giving up, since a B blocked along one line usually has room along another.
+  The split needs the check more than the fusion does: two A's born touching
+  span `2·A_RADIUS` from the parent's center while the B only reached
+  `A_RADIUS·∛2`, so a split always claims ground the dimer never held.
+  Without this, products get born interpenetrating and can only untangle by
+  drifting apart.
+- **The speed histogram** pools the newest 10 ticks' speeds into a fixed bin
+  grid and shows each bar as the *mean* count per bin across that window — the
+  Python model's `speed_average_ticks` time average, over twice its window of
+  5 (rather than the original's pooled window whose bin edges moved every
+  tick).
 - **Larger population limits** (up to 4,000 A), since the speed allows it.
 - **A simulation-speed control**, in simulated ticks per frame. Each frame
   spends at most 11 ms stepping, so a population big enough to blow that budget
   slows down smoothly instead of locking up the page.
 
-`box size`, `initial A`, `initial B` and `particle-mass` are read only by
-Setup, exactly as in the original; the panel marks them "on setup". Everything
-else takes effect live.
+`operating area`, `initial number of A`, `initial number of B` and
+`particle-mass` are read only by Initiate, exactly as in the original.
+Everything else, `initial temperature` included, takes effect live.
 
 ## What the tests check
 
@@ -143,12 +151,12 @@ else takes effect live.
 - `A + 2B` is conserved exactly over 20,000 steps
 - no particle ever leaves the box
 - particles never pass through one another (disk overlap stays below a full
-  contact distance), overlap is rare (~30 per million particle-steps), and no
+  contact distance), overlap is rare (~10 per million particle-steps), and no
   overlapping pair ever stops resolving — nothing jams
 - with reactions off, kinetic energy is conserved to 1 part in 10¹⁴
 - speeds relax to a 2D Maxwell-Boltzmann distribution — mean kinetic energy
   holds at the set temperature, and sd/mean converges on √(4/π − 1) ≈ 0.523
-- Kc reaches the same equilibrium starting from all-A and from all-B
+- K_c reaches the same equilibrium starting from all-A and from all-B
 
 `npm run smoke` loads the built bundle against a stub DOM and drives the real
 animation loop, checking that every element resolves, the buttons work, and the

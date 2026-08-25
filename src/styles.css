@@ -69,11 +69,6 @@ code {
   white-space: nowrap;
 }
 
-.perf .sep {
-  opacity: 0.4;
-  margin: 0 4px;
-}
-
 /* ---- main layout ---- */
 
 .layout {
@@ -185,6 +180,26 @@ code {
   opacity: 0.65;
 }
 
+/*
+ * Species swatches, trailing the A and B counts' labels. The slot is a
+ * fixed-width box so the two dots share a center line despite being
+ * deliberately different sizes; the dot's own size and color are set from
+ * the sim's radii and the renderer's palette in main.ts, so the legend can
+ * never drift from what is actually drawn on the canvas.
+ */
+.dot-slot {
+  display: inline-flex;
+  width: 16px;
+  justify-content: center;
+  vertical-align: middle;
+  margin-left: 10px;
+}
+
+.dot-slot .dot {
+  display: block;
+  border-radius: 50%;
+}
+
 .mon-value {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
@@ -220,9 +235,13 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
-.slider-row.deferred .name::after {
-  content: " · on setup";
-  opacity: 0.55;
+/* Locked while a run is going -- see setSlidersLocked() in main.ts. */
+.slider-row.locked {
+  opacity: 0.45;
+}
+
+.slider-row.locked input[type="range"] {
+  cursor: not-allowed;
 }
 
 input[type="range"] {
@@ -243,6 +262,16 @@ input[type="range"]::-webkit-slider-thumb {
   background: var(--accent);
   cursor: pointer;
   border: none;
+}
+
+input[type="range"]:disabled::-webkit-slider-thumb {
+  background: var(--muted);
+  cursor: not-allowed;
+}
+
+input[type="range"]:disabled::-moz-range-thumb {
+  background: var(--muted);
+  cursor: not-allowed;
 }
 
 input[type="range"]::-moz-range-thumb {

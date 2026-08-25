@@ -66,8 +66,8 @@ function makeNode(tag = 'div') {
 }
 
 const ids = ['sliders', 'world', 'plot-pop', 'plot-kc', 'plot-speed', 'mon-a', 'mon-b',
-  'mon-total', 'mon-temp', 'mon-kc', 'mon-ticks', 'perf-steps', 'perf-fps', 'perf-particles',
-  'btn-setup', 'btn-go', 'btn-step'];
+  'mon-total', 'mon-temp', 'mon-kc', 'mon-ticks', 'perf-particles',
+  'btn-setup', 'btn-go', 'btn-step', 'dot-a', 'dot-b'];
 const byId = Object.fromEntries(ids.map((id) => [id, makeNode(id.startsWith('plot') || id === 'world' ? 'canvas' : 'div')]));
 
 let rafCallback = null;
@@ -112,6 +112,10 @@ check('module loaded and requested a frame', rafCallback !== null);
 check('slider rows built', byId.sliders.children.length === 8, `${byId.sliders.children.length} rows`);
 check('monitors initialised', byId['mon-a'].textContent === '200', `# of A = ${byId['mon-a'].textContent}`);
 check('conserved total initialised', byId['mon-total'].textContent === '200');
+check('species swatches sized from the real radii',
+  byId['dot-a'].style.background === '#57b6e8' && byId['dot-b'].style.background === '#e05561'
+  && Math.abs(parseFloat(byId['dot-b'].style.width) / parseFloat(byId['dot-a'].style.width) - Math.cbrt(2)) < 1e-9,
+  `A ${byId['dot-a'].style.width}, B ${byId['dot-b'].style.width}`);
 
 // Press Go, then run frames.
 byId['btn-go'].listeners.click[0]();
@@ -134,8 +138,8 @@ check('A + 2B still 200', a + 2 * b === 200, `= ${a + 2 * b}`);
 check('measured temperature is a number', Number.isFinite(Number(byId['mon-temp'].textContent)),
   `T = ${byId['mon-temp'].textContent}`);
 check('Kc monitor populated', byId['mon-kc'].textContent !== '0', `Kc = ${byId['mon-kc'].textContent}`);
-check('perf readout populated', byId['perf-fps'].textContent.includes('fps'),
-  `${byId['perf-steps'].textContent} / ${byId['perf-fps'].textContent} / ${byId['perf-particles'].textContent}`);
+check('particle count readout populated', byId['perf-particles'].textContent.includes('particles'),
+  byId['perf-particles'].textContent);
 check('particles were drawn', (calls.get('fill') ?? 0) + (calls.get('fillRect') ?? 0) > 0);
 check('plots were drawn', (calls.get('stroke') ?? 0) > 0 && (calls.get('fillText') ?? 0) > 0);
 
