@@ -12,6 +12,9 @@ const LABEL = '#aab3c5';
 const FONT = '11px ui-sans-serif, system-ui, -apple-system, sans-serif';
 const SUB_FONT = '8px ui-sans-serif, system-ui, -apple-system, sans-serif';
 
+/** Left edge of the rotated y-axis caption; see drawFrame(). */
+const Y_CAPTION_X = 1;
+
 /** A "nice" tick step (1, 2 or 5 times a power of ten) near range/targetTicks. */
 function niceStep(range: number, targetTicks: number): number {
   if (!(range > 0)) {
@@ -29,11 +32,17 @@ function formatTick(v: number, step: number): string {
     return '0';
   }
   const abs = Math.abs(v);
-  if (abs >= 10000 || abs < 0.001) {
+  // Only genuinely tiny values get exponent form: "2e-4" beats "0.0002" at
+  // axis size, but "1e+4" is worse than "10,000" for a tick count or a
+  // molecule count, which is all a large value on these axes ever is.
+  if (abs < 0.001) {
     return v.toExponential(0);
   }
   const decimals = Math.max(0, -Math.floor(Math.log10(step)));
-  return v.toFixed(Math.min(decimals, 4));
+  return v.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: Math.min(decimals, 4),
+  });
 }
 
 interface PenSpec {
@@ -49,7 +58,13 @@ abstract class PlotBase {
   protected ctx: CanvasRenderingContext2D;
   protected width = 0;
   protected height = 0;
-  protected padL = 46;
+  /**
+   * Left gutter: the rotated caption's ~13px of thickness at the very edge,
+   * then room for the widest y tick label, which ends 6px short of the plot.
+   * Sized for five characters ("4,000", "1,000") now that large values are
+   * spelled out rather than given as exponents.
+   */
+  protected padL = 54;
   protected padR = 10;
   protected padT = 20;
   protected padB = 30;
@@ -153,7 +168,11 @@ abstract class PlotBase {
     ctx.textBaseline = 'bottom';
     ctx.fillText(this.xLabel, L + W, this.height - 2);
     ctx.save();
-    ctx.translate(10, T);
+    // The rotated caption's *thickness* runs rightward from this x, so it
+    // occupies roughly [Y_CAPTION_X, Y_CAPTION_X + line height] and the y
+    // tick labels end at L - 6. Kept hard against the left edge to leave
+    // that gutter for the numbers, which are the wider of the two.
+    ctx.translate(Y_CAPTION_X, T);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
