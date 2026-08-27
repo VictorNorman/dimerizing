@@ -12,7 +12,7 @@
       <div class="perf">
         <span id="perf-particles">—</span>
         <span class="sep">·</span>
-        <span class="version">v0.5</span>
+        <span class="version">v0.5.1</span>
       </div>
     </header>
 
@@ -54,15 +54,15 @@
             <span class="mon-value" id="mon-kc">0</span>
           </div>
           <div class="monitor">
-            <span class="mon-label">&Pi; partial, A <em>(mN/m)</em></span>
+            <span class="mon-label">P<sub>A</sub> partial <em>(mN/m)</em></span>
             <span class="mon-value" id="mon-pressure-a">0</span>
           </div>
           <div class="monitor">
-            <span class="mon-label">&Pi; partial, B <em>(mN/m)</em></span>
+            <span class="mon-label">P<sub>B</sub> partial <em>(mN/m)</em></span>
             <span class="mon-value" id="mon-pressure-b">0</span>
           </div>
           <div class="monitor">
-            <span class="mon-label">&Pi; total, measured <em>(mN/m)</em></span>
+            <span class="mon-label">P<sub>total</sub>, measured <em>(mN/m)</em></span>
             <span class="mon-value" id="mon-pressure">0</span>
           </div>
           <div class="monitor">
@@ -107,8 +107,8 @@
           one B particle (red, drawn larger — twice the mass and twice the volume, so
           &#8731;2 &asymp; 1.26 times the radius, and it gets hit more often), and a B that
           hits anything — another particle or a wall — may
-          fall back apart into two A's. <code>dimerization&#8209;chance</code> and
-          <code>dissociation&#8209;chance</code> set how likely each event is, per collision.
+          fall back apart into two A's. <code>dimerization probability</code> and
+          <code>dissociation probability</code> set how likely each event is, per collision.
         </p>
         <p>
           This is a demonstration of <strong>dynamic equilibrium</strong>: individual
@@ -117,8 +117,8 @@
           <code>A&nbsp;+&nbsp;2B</code> never changes — only how the mass is distributed
           between the two species. If the reaction behaves like real mass-action chemistry,
           <code>[B]/[A]&sup2;</code> should hold roughly steady once equilibrium is reached,
-          however you got there — try <code>initial&#8209;B = 0</code> versus starting with
-          some B already present.
+          however you got there — try <code>initial number of B = 0</code> versus starting
+          with some B already present.
         </p>
         <p>
           Collisions are exact hard-disk contacts, resolved by solving for the instant the

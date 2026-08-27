@@ -1,7 +1,7 @@
 {
   "name": "dimerizing",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "description": "A fast 2D hard-disk dimerizing gas (2A <=> B) on canvas.",
   "scripts": {
