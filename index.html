@@ -11,6 +11,8 @@
       <h1>Dimerizing Gas <span class="reaction">2A &#8652; B</span></h1>
       <div class="perf">
         <span id="perf-particles">—</span>
+        <span class="sep">·</span>
+        <span class="version">v0.5</span>
       </div>
     </header>
 
@@ -44,8 +46,32 @@
             <span class="mon-value" id="mon-temp">0</span>
           </div>
           <div class="monitor">
-            <span class="mon-label">K<sub>c</sub> = [B]/[A]&sup2; <em>(&times;10&#8308;)</em></span>
+            <span class="mon-label">system area <em>(nm&sup2;)</em></span>
+            <span class="mon-value" id="mon-area">0</span>
+          </div>
+          <div class="monitor">
+            <span class="mon-label">K<sub>c</sub> = [B]/[A]&sup2; <em>(nm&sup2;)</em></span>
             <span class="mon-value" id="mon-kc">0</span>
+          </div>
+          <div class="monitor">
+            <span class="mon-label">&Pi; partial, A <em>(mN/m)</em></span>
+            <span class="mon-value" id="mon-pressure-a">0</span>
+          </div>
+          <div class="monitor">
+            <span class="mon-label">&Pi; partial, B <em>(mN/m)</em></span>
+            <span class="mon-value" id="mon-pressure-b">0</span>
+          </div>
+          <div class="monitor">
+            <span class="mon-label">&Pi; total, measured <em>(mN/m)</em></span>
+            <span class="mon-value" id="mon-pressure">0</span>
+          </div>
+          <div class="monitor">
+            <span class="mon-label">Nk<sub>B</sub>T/A, ideal <em>(mN/m)</em></span>
+            <span class="mon-value" id="mon-pressure-ideal">0</span>
+          </div>
+          <div class="monitor">
+            <span class="mon-label">measured / ideal</span>
+            <span class="mon-value" id="mon-pressure-ratio">—</span>
           </div>
           <div class="monitor">
             <span class="mon-label">ticks</span>
@@ -95,13 +121,26 @@
           some B already present.
         </p>
         <p>
-          Collisions are exact hard-disk contacts, and they are resolved by solving for the
-          instant the two disks touched, so what you see is exactly what collides. Ordinary
-          collisions conserve momentum and kinetic energy exactly; only the reactive events
-          exchange energy with an ambient bath at <code>temperature</code> (forming a bond
-          releases the pair's relative kinetic energy, breaking one draws a thermal kick
-          back in). Temperature and mass are in reduced units — temperature <em>is</em> the
-          average kinetic energy per particle, with k<sub>B</sub> = 1 — not real kelvin and amu.
+          Collisions are exact hard-disk contacts, resolved by solving for the instant the
+          two disks touched, so what you see is exactly what collides. The gas is
+          <strong>energy-closed</strong>: there is no bond energy and no thermal bath, so a
+          reaction only moves kinetic energy around. A dimer carries away its pair's whole
+          energy; a splitting dimer hands its energy to the two fragments at random. Momentum
+          cannot also survive a two-body reaction — conserving it would pin the dimer's speed
+          below the energy it must carry — so this model keeps the energy and lets the
+          momentum go.
+        </p>
+        <p>
+          That makes <code>temperature</code> a result rather than a setting: the slider only
+          says where it starts. Energy is fixed and T = E/N, so pairing A's up <em>raises</em>
+          the temperature and splitting B's <em>lowers</em> it.
+        </p>
+        <p>
+          The box interior is 100 nm on a side at full <code>operating area</code>, which fixes
+          every other unit: one patch is 1.27 nm, an A is 0.63 nm across, and one tick is
+          13.9 ps. Pressure is measured, not assumed — the gauge sums the momentum each wall
+          absorbs, per species, giving partial pressures in mN/m that you can compare against
+          N·k<sub>B</sub>T/A to see whether the ideal gas law holds in two dimensions.
         </p>
         <p class="credit">
           Port of <code>models/dimerizing_gas.py</code> from netlogo-py. Collision handling

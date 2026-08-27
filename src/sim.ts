@@ -80,6 +80,50 @@ const MAX_STEP_DISPLACEMENT = 0.2;
  */
 const SPLIT_ORIENTATION_TRIES = 6;
 
+// =======================================================================
+// Absolute units
+//
+// Fixing one length turns the reduced-unit model into a dimensional one.
+// Read the temperature slider as real kelvin and the mass slider as real
+// amu, and every other unit follows -- including the tick, which is not a
+// free choice once the other three are made.
+// =======================================================================
+
+/** The box interior, wall face to wall face, at 100% operating area. */
+export const BOX_SIDE_NM = 100;
+
+/** Boltzmann's constant, J/K. */
+const K_B = 1.380649e-23;
+/** One atomic mass unit, kg. */
+const AMU_KG = 1.66053906660e-27;
+
+/**
+ * Patch length in metres. The wall centerline sits at MAX_PXCOR and its
+ * inner face half a patch inside that, so the interior spans
+ * 2 * (MAX_PXCOR - 0.5) patches when the box is at full size.
+ */
+export const METRES_PER_PATCH = (BOX_SIDE_NM * 1e-9) / (2 * (MAX_PXCOR - 0.5));
+
+/**
+ * One patch per tick in m/s. A reduced speed is sqrt(2T/m) on the sliders'
+ * bare numbers; the same speed in SI is sqrt(2 k_B T / (m * amu)). The ratio
+ * is sqrt(k_B / amu) -- which depends on neither slider, so one tick has a
+ * single fixed duration no matter how the gas is set up.
+ */
+const METRES_PER_SECOND_PER_PATCH_TICK = Math.sqrt(K_B / AMU_KG);
+
+/** Seconds in one tick: about 13.9 ps for a 100 nm box. */
+export const SECONDS_PER_TICK = METRES_PER_PATCH / METRES_PER_SECOND_PER_PATCH_TICK;
+
+/**
+ * Reduced pressure to N/m. A 2D pressure is force per unit *length*, so in
+ * reduced units it comes out as mass/time^2 -- amu per tick squared.
+ */
+export const PRESSURE_TO_N_PER_M = AMU_KG / (SECONDS_PER_TICK * SECONDS_PER_TICK);
+
+/** Patches to nanometres. */
+export const NM_PER_PATCH = METRES_PER_PATCH * 1e9;
+
 export interface Params {
   /** Number of A particles created by setup. */
   initialA: number;
@@ -107,16 +151,26 @@ export interface Stats {
   countB: number;
   /** count_a + 2 * count_b -- conserved exactly, whatever else happens. */
   totalAEquivalent: number;
-  /** Mean kinetic energy per particle: the temperature the gas actually has. */
-  measuredTemperature: number;
   /**
-  * B / A^2, scaled by 1e4 to stay readable. A mass-action Kc is built
-  * from *concentrations*, and boxSize is a fraction of the world's *area*
-  * (see the slider and boxEdge's sqrt in setup()), so converting it to a
-  * fraction is the whole conversion -- no squaring, because the slider is
-  * already an area rather than a length.
-  */
+   * Mean kinetic energy per particle. With k_B = 1 and two translational
+   * degrees of freedom this *is* the temperature in kelvin, and since no
+   * reaction creates or destroys energy any more, it is a result of the run
+   * rather than a setting -- the slider only fixes where it starts.
+   */
+  measuredTemperature: number;
+  /** [B] / [A]^2 in nm^2, from real 2D concentrations. */
   kc: number;
+  /** Interior area in nm^2. */
+  areaNm2: number;
+  /** Concentrations, particles per nm^2. */
+  concA: number;
+  concB: number;
+  /** Total kinetic energy in reduced units; conserved, so a leak shows here. */
+  kineticEnergy: number;
+  /** Net drift the gas has picked up, in patches/tick. */
+  driftSpeed: number;
+  /** N k_B T / A in N/m -- what an ideal 2D gas would push with. */
+  idealPressure: number;
 }
 
 /**
@@ -179,6 +233,18 @@ export class Sim {
   private tickDelta = MAX_TICK_DELTA;
   /** Fastest particle seen during the last move pass; sets the next step. */
   private maxSpeedSq = 0;
+
+  // ---- Wall-impulse pressure gauge --------------------------------------
+  /**
+   * Momentum delivered to the walls since the last drain, per species, in
+   * reduced units (amu * patch / tick). A 2D pressure is force per unit
+   * length, so dividing this by the perimeter and by the elapsed time gives
+   * a partial pressure directly -- pressure as molecular impacts, with no
+   * equation of state assumed anywhere.
+   */
+  private wallImpulse = [0, 0];
+  /** Simulated time the accumulated impulse covers. */
+  private wallImpulseTicks = 0;
 
   // ---- Geometry --------------------------------------------------------
   /** Wall centerline, in patches from the origin. */
@@ -372,11 +438,13 @@ export class Sim {
    * step length worked out.
    */
   private moveAndBounce(dt: number): void {
-    const { x, y, vx, vy, alive, radius, species, bornAt } = this;
+    const { x, y, vx, vy, alive, radius, species, mass, bornAt } = this;
     const dissociationChance = this.params.dissociationChance;
     const inner = this.innerBound;
+    const impulse = this.wallImpulse;
     let maxSpeedSq = 0;
     const top = this.top;
+    this.wallImpulseTicks += dt;
 
     for (let i = 0; i < top; i++) {
       if (!alive[i]) {
@@ -400,21 +468,29 @@ export class Sim {
       // a projection: two particles that reach the same corner in one step
       // both land on the identical point, which leaves them exactly
       // coincident and takes several steps of collision response to undo.
+      // Each reflection reverses one velocity component, so the wall takes
+      // 2 * m * |v| of momentum from that axis. Summing those is the whole
+      // pressure measurement.
+      const sp = species[i];
       if (px > reach) {
         px = 2 * reach - px;
+        impulse[sp] += 2 * mass[i] * Math.abs(vx[i]);
         vx[i] = -Math.abs(vx[i]);
         hitWall = true;
       } else if (px < -reach) {
         px = -2 * reach - px;
+        impulse[sp] += 2 * mass[i] * Math.abs(vx[i]);
         vx[i] = Math.abs(vx[i]);
         hitWall = true;
       }
       if (py > reach) {
         py = 2 * reach - py;
+        impulse[sp] += 2 * mass[i] * Math.abs(vy[i]);
         vy[i] = -Math.abs(vy[i]);
         hitWall = true;
       } else if (py < -reach) {
         py = -2 * reach - py;
+        impulse[sp] += 2 * mass[i] * Math.abs(vy[i]);
         vy[i] = Math.abs(vy[i]);
         hitWall = true;
       }
@@ -818,9 +894,18 @@ export class Sim {
   }
 
   /**
-   * 2A -> B. An exothermic bond forming: momentum is conserved exactly, but
-   * the two A's kinetic energy *relative* to their shared center of mass is
-   * not carried forward -- it went into the bond.
+   * 2A -> B. The dimer carries away the pair's entire kinetic energy: there
+   * is no bond energy and no thermal bath, so a reaction moves energy around
+   * without creating or destroying any.
+   *
+   * Momentum is *not* conserved here, and cannot be. Momentum conservation
+   * alone fixes the dimer's velocity at the pair's center-of-mass velocity,
+   * whose kinetic energy is short of the reactants' by exactly the relative
+   * term 1/2 mu v_rel^2 -- strictly positive for any pair close enough to
+   * react. Energy and momentum cannot both survive a two-body association,
+   * which is why real recombination needs a third body. This model keeps the
+   * energy and lets the momentum go: the dimer leaves along the direction
+   * the pair's momentum pointed, at whatever speed carries the full energy.
    */
   private combine(
     i: number,
@@ -842,8 +927,28 @@ export class Sim {
     const mi = this.mass[i];
     const mj = this.mass[j];
     const massB = mi + mj;
-    const comVx = (mi * this.vx[i] + mj * this.vx[j]) / massB;
-    const comVy = (mi * this.vy[i] + mj * this.vy[j]) / massB;
+
+    // All of the reactants' kinetic energy, carried across whole.
+    const energy = 0.5 * (mi * (this.vx[i] * this.vx[i] + this.vy[i] * this.vy[i])
+      + mj * (this.vx[j] * this.vx[j] + this.vy[j] * this.vy[j]));
+    const speed = Math.sqrt((2 * energy) / massB);
+
+    // Heading: where the pair's momentum was already pointing, so the dimer
+    // continues the motion the eye was following. A head-on pair of equals
+    // has no such direction, so that case picks one at random.
+    let dirX = mi * this.vx[i] + mj * this.vx[j];
+    let dirY = mi * this.vy[i] + mj * this.vy[j];
+    const dirLen = Math.hypot(dirX, dirY);
+    if (dirLen > 1e-12) {
+      dirX /= dirLen;
+      dirY /= dirLen;
+    } else {
+      const theta = Math.random() * 2 * Math.PI;
+      dirX = Math.cos(theta);
+      dirY = Math.sin(theta);
+    }
+    const dimerVx = speed * dirX;
+    const dimerVy = speed * dirY;
     // Mass-weighted midpoint: the center of mass, which is where the dimer
     // belongs and what keeps the pair's motion continuous.
     let cx = (mi * xi + mj * xj) / massB;
@@ -873,7 +978,7 @@ export class Sim {
 
     this.kill(i);
     this.kill(j);
-    this.spawn(SPECIES_B, massB, cx, cy, comVx, comVy);
+    this.spawn(SPECIES_B, massB, cx, cy, dimerVx, dimerVy);
     return true;
   }
 
@@ -927,10 +1032,15 @@ export class Sim {
   }
 
   /**
-   * B -> 2A. Bond breaking, paid for out of an ambient thermal bath at the
-   * current temperature: momentum is conserved, and the fragments fly apart
-   * with a random-direction relative velocity sized by thermal_speed() on
-   * the pair's reduced mass.
+   * B -> 2A. The dimer's kinetic energy is split at random between the two
+   * fragments, each of which then flies off in its own random direction.
+   * Nothing is drawn from a bath and nothing is spent on a bond, so the
+   * gas's total kinetic energy is exactly what it was.
+   *
+   * As in combine(), momentum does not survive this: fixing the two
+   * fragments' momenta to sum to the parent's would force their relative
+   * kinetic energy to zero, leaving a pair that never separates. Energy is
+   * kept and momentum is allowed to float.
    *
    * Returns false when there is nowhere to put the fragments, in which case
    * nothing changes and the caller should treat the contact as an ordinary
@@ -938,10 +1048,7 @@ export class Sim {
    */
   private dissociate(b: number): boolean {
     const childMass = this.mass[b] / 2;
-    const reducedMass = childMass / 2;
-    const kickSpeed = this.thermalSpeed(reducedMass);
-    const comVx = this.vx[b];
-    const comVy = this.vy[b];
+    const energy = 0.5 * this.mass[b] * (this.vx[b] * this.vx[b] + this.vy[b] * this.vy[b]);
     const x = this.x[b];
     const y = this.y[b];
 
@@ -957,12 +1064,11 @@ export class Sim {
     // room has to be checked rather than assumed. The axis is random, and a
     // B blocked along one line usually has room along another, so decline
     // only after several draws have all failed.
-    let theta = 0;
     let offX = 0;
     let offY = 0;
     let room = false;
     for (let tries = 0; tries < SPLIT_ORIENTATION_TRIES; tries++) {
-      theta = Math.random() * 2 * Math.PI;
+      const theta = Math.random() * 2 * Math.PI;
       offX = Math.cos(theta) * offset;
       offY = Math.sin(theta) * offset;
       const x1 = x + offX;
@@ -984,12 +1090,22 @@ export class Sim {
       return false;
     }
 
-    const kickX = (kickSpeed / 2) * Math.cos(theta);
-    const kickY = (kickSpeed / 2) * Math.sin(theta);
+    // Split the parent's energy at random between the fragments, then send
+    // each off on its own heading. The placement axis above and these two
+    // headings are independent, so a pair can be born heading back into one
+    // another; the freshness guard makes that an ordinary elastic bounce,
+    // which costs nothing in energy.
+    const share = Math.random();
+    const speed1 = Math.sqrt((2 * share * energy) / childMass);
+    const speed2 = Math.sqrt((2 * (1 - share) * energy) / childMass);
+    const theta1 = Math.random() * 2 * Math.PI;
+    const theta2 = Math.random() * 2 * Math.PI;
 
     this.kill(b);
-    const a1 = this.spawn(SPECIES_A, childMass, x + offX, y + offY, comVx + kickX, comVy + kickY);
-    const a2 = this.spawn(SPECIES_A, childMass, x - offX, y - offY, comVx - kickX, comVy - kickY);
+    const a1 = this.spawn(SPECIES_A, childMass, x + offX, y + offY,
+      speed1 * Math.cos(theta1), speed1 * Math.sin(theta1));
+    const a2 = this.spawn(SPECIES_A, childMass, x - offX, y - offY,
+      speed2 * Math.cos(theta2), speed2 * Math.sin(theta2));
     this.clampIntoBox(a1);
     this.clampIntoBox(a2);
     return true;
@@ -999,10 +1115,49 @@ export class Sim {
   // Readouts
   // =====================================================================
 
+  /** Interior side, wall face to wall face, in patches. */
+  get interiorSide(): number {
+    return 2 * this.innerBound;
+  }
+
+  /** Interior area in nm^2 -- the "volume" a 2D concentration divides by. */
+  get areaNm2(): number {
+    const side = this.interiorSide * NM_PER_PATCH;
+    return side * side;
+  }
+
+  /**
+   * Partial pressures in N/m, one per species, averaged over the simulated
+   * time since the previous call -- which also resets the accumulator, so
+   * successive calls tile the run rather than overlapping.
+   *
+   * Returns null when no time has passed, so a caller polling faster than
+   * the sim steps gets "no reading yet" instead of a divide by zero.
+   */
+  drainWallPressure(): { a: number; b: number } | null {
+    const elapsed = this.wallImpulseTicks;
+    if (elapsed <= 0) {
+      return null;
+    }
+    // Force per unit length: impulse / time / perimeter.
+    const perimeter = 4 * this.interiorSide;
+    const scale = PRESSURE_TO_N_PER_M / (elapsed * perimeter);
+    const out = {
+      a: this.wallImpulse[SPECIES_A] * scale,
+      b: this.wallImpulse[SPECIES_B] * scale,
+    };
+    this.wallImpulse[SPECIES_A] = 0;
+    this.wallImpulse[SPECIES_B] = 0;
+    this.wallImpulseTicks = 0;
+    return out;
+  }
+
   stats(): Stats {
     let countA = 0;
     let countB = 0;
     let energy = 0;
+    let px = 0;
+    let py = 0;
     for (let i = 0; i < this.top; i++) {
       if (!this.alive[i]) {
         continue;
@@ -1012,17 +1167,54 @@ export class Sim {
       } else {
         countB++;
       }
-      const v2 = this.vx[i] * this.vx[i] + this.vy[i] * this.vy[i];
-      energy += 0.5 * this.mass[i] * v2;
+      const m = this.mass[i];
+      const vx = this.vx[i];
+      const vy = this.vy[i];
+      energy += 0.5 * m * (vx * vx + vy * vy);
+      px += m * vx;
+      py += m * vy;
     }
     const n = countA + countB;
+    const area = this.areaNm2;
+    // Concentrations are per nm^2, so Kc = [B]/[A]^2 comes out in nm^2 --
+    // a real, dimensional constant that no longer has the box size baked
+    // into it the way a bare count ratio did.
+    const concA = countA / area;
+    const concB = countB / area;
+    const temperature = n > 0 ? energy / n : 0;
     return {
       countA,
       countB,
       totalAEquivalent: countA + 2 * countB,
-      measuredTemperature: n > 0 ? energy / n : 0,
-      kc: countA > 0 ? (countB / (countA * countA)) * 10000 : 0,
+      measuredTemperature: temperature,
+      kc: concA > 0 ? concB / (concA * concA) : 0,
+      areaNm2: area,
+      concA,
+      concB,
+      kineticEnergy: energy,
+      // Reactions do not conserve momentum in this model, so this wanders
+      // instead of sitting at zero. Reported as a speed the whole gas would
+      // have if its momentum were shared out, which is directly comparable
+      // to a thermal speed and so says how much of the pressure is drift.
+      driftSpeed: n > 0 ? Math.hypot(px, py) / this.totalMass() : 0,
+      // What an ideal 2D gas would push with at this count, temperature and
+      // area: Pi = N k_B T / A. The wall gauge is measured independently,
+      // so the two agreeing is a result rather than a definition.
+      idealPressure: area > 0
+        ? ((n * temperature) / (this.interiorSide * this.interiorSide)) * PRESSURE_TO_N_PER_M
+        : 0,
     };
+  }
+
+  /** Total mass of the living gas, in amu. */
+  private totalMass(): number {
+    let m = 0;
+    for (let i = 0; i < this.top; i++) {
+      if (this.alive[i]) {
+        m += this.mass[i];
+      }
+    }
+    return m;
   }
 
   /**

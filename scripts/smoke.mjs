@@ -66,7 +66,8 @@ function makeNode(tag = 'div') {
 }
 
 const ids = ['sliders', 'world', 'plot-pop', 'plot-kc', 'plot-speed', 'mon-a', 'mon-b',
-  'mon-total', 'mon-temp', 'mon-kc', 'mon-ticks', 'perf-particles',
+  'mon-total', 'mon-temp', 'mon-area', 'mon-kc', 'mon-pressure-a', 'mon-pressure-b',
+  'mon-pressure', 'mon-pressure-ideal', 'mon-pressure-ratio', 'mon-ticks', 'perf-particles',
   'btn-setup', 'btn-go', 'btn-step', 'dot-a', 'dot-b'];
 const byId = Object.fromEntries(ids.map((id) => [id, makeNode(id.startsWith('plot') || id === 'world' ? 'canvas' : 'div')]));
 
@@ -110,8 +111,10 @@ const check = (name, ok, detail = '') => {
 
 check('module loaded and requested a frame', rafCallback !== null);
 check('slider rows built', byId.sliders.children.length === 8, `${byId.sliders.children.length} rows`);
-check('monitors initialised', byId['mon-a'].textContent === '200', `# of A = ${byId['mon-a'].textContent}`);
-check('conserved total initialised', byId['mon-total'].textContent === '200');
+// The default population, which the panel's own slider default sets.
+const N0 = '1000';
+check('monitors initialised', byId['mon-a'].textContent === N0, `# of A = ${byId['mon-a'].textContent}`);
+check('conserved total initialised', byId['mon-total'].textContent === N0);
 check('species swatches sized from the real radii',
   byId['dot-a'].style.background === '#57b6e8' && byId['dot-b'].style.background === '#e05561'
   && Math.abs(parseFloat(byId['dot-b'].style.width) / parseFloat(byId['dot-a'].style.width) - Math.cbrt(2)) < 1e-9,
@@ -134,10 +137,18 @@ const a = Number(byId['mon-a'].textContent);
 const b = Number(byId['mon-b'].textContent);
 check('simulation advanced', Number(byId['mon-ticks'].textContent) > 0, `ticks = ${byId['mon-ticks'].textContent}`);
 check('dimerization visible in the monitors', b > 0, `A = ${a}, B = ${b}`);
-check('A + 2B still 200', a + 2 * b === 200, `= ${a + 2 * b}`);
+check('A + 2B conserved', a + 2 * b === Number(N0), `= ${a + 2 * b}`);
 check('measured temperature is a number', Number.isFinite(Number(byId['mon-temp'].textContent)),
   `T = ${byId['mon-temp'].textContent}`);
 check('Kc monitor populated', byId['mon-kc'].textContent !== '0', `Kc = ${byId['mon-kc'].textContent}`);
+check('system area reported', Number(byId['mon-area'].textContent) > 0, `${byId['mon-area'].textContent} nm^2`);
+check('wall-impulse pressure reported', Number(byId['mon-pressure'].textContent) > 0
+  && Number(byId['mon-pressure-a'].textContent) > 0,
+  `A ${byId['mon-pressure-a'].textContent} + B ${byId['mon-pressure-b'].textContent}`
+  + ` = ${byId['mon-pressure'].textContent} mN/m`);
+check('measured pressure is within 25% of ideal',
+  Math.abs(Number(byId['mon-pressure-ratio'].textContent) - 1) < 0.25,
+  `ratio = ${byId['mon-pressure-ratio'].textContent}`);
 check('particle count readout populated', byId['perf-particles'].textContent.includes('particles'),
   byId['perf-particles'].textContent);
 check('particles were drawn', (calls.get('fill') ?? 0) + (calls.get('fillRect') ?? 0) > 0);
@@ -145,7 +156,7 @@ check('plots were drawn', (calls.get('stroke') ?? 0) > 0 && (calls.get('fillText
 
 // Setup button must reset cleanly.
 byId['btn-setup'].listeners.click[0]();
-check('Setup resets the run', byId['mon-ticks'].textContent === '0.0' && byId['mon-total'].textContent === '200',
+check('Initiate resets the run', byId['mon-ticks'].textContent === '0.0' && byId['mon-total'].textContent === N0,
   `ticks = ${byId['mon-ticks'].textContent}, total = ${byId['mon-total'].textContent}`);
 
 // Step button while paused.

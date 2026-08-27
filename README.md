@@ -31,21 +31,33 @@ Two species share a box: **A** (blue, mass `particle-mass`, radius 0.25) and
 radius, and it gets hit more often).
 
 - Two A particles whose disks actually touch fuse into one B with probability
-  `dimerization probability`. Momentum is conserved exactly; the pair's kinetic
-  energy *relative* to their shared center of mass is not carried forward —
-  forming a bond is exothermic, and that energy went into the bond.
+  `dimerization probability`. The dimer carries away the pair's **entire**
+  kinetic energy, leaving along the direction their momentum pointed.
 - A B that touches anything — a particle or a wall — falls apart into two A's
-  with probability `dissociation probability`. Momentum is conserved, and the
-  fragments fly apart with a random-direction relative velocity sized off the
-  `initial temperature`: bond-breaking draws its energy from an ambient thermal
-  bath.
+  with probability `dissociation probability`. The parent's kinetic energy is
+  split at random between the fragments, each leaving on its own random
+  heading.
 - Everything else is an ordinary elastic collision, exactly conserving both
   momentum and kinetic energy.
 
-So the gas is quasi-isothermal (coupled to a bath at `initial temperature`)
-rather than energy-closed — which is the right physical picture for what
-"[B]/[A]² should be constant at equilibrium" describes: a constant-temperature
-reaction vessel, not an insulated one. Mass is conserved exactly and always: `A + 2B` never changes.
+There is no bond energy and no thermal bath: **a reaction moves energy around
+without creating or destroying any**. Kinetic energy holds to 1 part in 10¹⁵
+over 60,000 steps of reacting, which `npm run check` asserts. Mass is
+conserved exactly and always: `A + 2B` never changes.
+
+Momentum is *not* conserved at a reaction, and cannot be. Momentum
+conservation alone pins the dimer's velocity to the pair's centre-of-mass
+velocity, whose kinetic energy falls short of the reactants' by exactly
+½μv_rel² — strictly positive for any pair close enough to react. Energy and
+momentum cannot both survive a two-body association, which is why real
+recombination needs a third body or a photon. This model keeps the energy and
+lets the momentum go. The resulting drift stays small, a few percent of a
+thermal speed, because the walls bound it.
+
+Temperature is therefore a *result*, not a setting — the slider only says
+where it starts. With energy fixed and T = E/N, pairing A's up **raises** the
+temperature and splitting B's **lowers** it: from all-A at 298 K a run settles
+near 500 K, from all-B near 257 K.
 
 The point of the model is **dynamic equilibrium**. Individual molecules keep
 reacting in both directions forever, but the populations settle into a stable
@@ -59,13 +71,40 @@ run that starts with B already present — they land on the same K_c.
 
 ### Units
 
-`initial temperature` and `particle-mass` are labeled K and amu because that is
-the intuitive way to think about them, but this is not a dimensionally real physics
-model. There is no Boltzmann constant: temperature *is* average kinetic energy
-per particle (k_B = 1, the usual reduced-units convention in molecular
-simulation). `operating area` is a genuine dimensionless percentage of the
-maximum *area* -- the two-dimensional box shrinks each side by
-sqrt(percent/100), so the vessel's area lands on the requested percentage.
+Fixing one length makes the whole model dimensional. The box interior at
+100% `operating area` is defined as **100 nm** on a side, the temperature
+slider is read as real kelvin and the mass slider as real amu, and every
+other unit then follows — including the tick, which is not a free choice
+once the other three are made:
+
+| quantity | value |
+|---|---|
+| 1 patch | 1.266 nm |
+| A diameter | 0.633 nm |
+| B diameter | 0.797 nm |
+| 1 tick | 13.9 ps |
+| system area at 100% | 10,000 nm² |
+
+The tick works out as √(amu / k_B) × 1 patch and depends on neither slider,
+so it has one fixed duration however the gas is set up. A 400-tick run is
+about 5.5 ns — real molecular-dynamics timescales, and A's diameter lands on
+a real molecular size.
+
+That makes the derived quantities real too. Concentrations are particles per
+nm², so `K_c = [B]/[A]²` comes out in nm² — a dimensional constant with the
+box size no longer baked into it, unlike the bare count ratio it replaces.
+
+**Pressure** is measured mechanically. In 2D it is force per unit *length*
+(N/m, the units of surface tension), and the gauge sums the momentum each
+wall absorbs — 2m|v⊥| per reflection — then divides by perimeter and elapsed
+time. Nothing about an equation of state is assumed, so comparing it against
+N·k_B·T/A is a genuine test. Each species is accumulated separately, giving
+partial pressures that add to the total by Dalton's law.
+
+The ideal gas law does hold in two dimensions, to within the excluded-volume
+correction: at 1000 particles the disks cover ~3% of the box and the measured
+pressure runs about **7% above** N·k_B·T/A, close to the 2D hard-disk second
+virial term 1 + 2φ. `npm run check` asserts that.
 
 ## What makes it fast
 
@@ -153,6 +192,11 @@ Everything else, `initial temperature` included, takes effect live.
 - particles never pass through one another (disk overlap stays below a full
   contact distance), overlap is rare (~10 per million particle-steps), and no
   overlapping pair ever stops resolving — nothing jams
+- kinetic energy is conserved to 1 part in 10¹⁵ *through reactions*, from
+  both starting compositions, and temperature rises from all-A while falling
+  from all-B
+- wall-impulse pressure sits within the excluded-volume correction of
+  N·k_B·T/A — the 2D ideal gas law, measured rather than assumed
 - with reactions off, kinetic energy is conserved to 1 part in 10¹⁴
 - speeds relax to a 2D Maxwell-Boltzmann distribution — mean kinetic energy
   holds at the set temperature, and sd/mean converges on √(4/π − 1) ≈ 0.523

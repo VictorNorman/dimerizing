@@ -25,27 +25,27 @@ const SLIDERS: SliderDef[] = [
     key: 'initialA',
     label: 'initial number of A',
     min: 0,
-    max: 500,
-    step: 2,
-    value: 200,
+    max: 4000,
+    step: 10,
+    value: 1000,
     deferred: true,
   },
   {
     key: 'initialB',
     label: 'initial number of B',
     min: 0,
-    max: 250,
-    step: 1,
+    max: 2000,
+    step: 5,
     value: 0,
     deferred: true,
   },
   {
     key: 'particleMass',
     label: 'particle-mass (A)',
-    min: 1,
-    max: 60,
+    min: 2,
+    max: 100,
     step: 1,
-    value: 2,
+    value: 44,
     units: 'amu',
     deferred: true,
   },
@@ -53,9 +53,9 @@ const SLIDERS: SliderDef[] = [
     key: 'temperature',
     label: 'initial temperature',
     min: 1,
-    max: 500,
+    max: 1000,
     step: 1,
-    value: 8,
+    value: 298,
     units: 'K',
   },
   {
@@ -98,10 +98,10 @@ const SLIDERS: SliderDef[] = [
 ];
 
 const params: Params = {
-  initialA: 200,
+  initialA: 1000,
   initialB: 0,
-  particleMass: 2,
-  temperature: 8,
+  particleMass: 44,
+  temperature: 298,
   dimerizationChance: 40,
   dissociationChance: 4,
   boxSize: 100,
@@ -249,7 +249,7 @@ const popPlot = new TimeSeriesPlot(el<HTMLCanvasElement>('plot-pop'), {
 
 const kcPlot = new TimeSeriesPlot(el<HTMLCanvasElement>('plot-kc'), {
   xLabel: 'time (ticks)',
-  yLabel: '[B] / [A]² (×10⁴)',
+  yLabel: '[B] / [A]² (nm²)',
   pens: [{
     label: 'K',
     sub: 'c',
@@ -295,9 +295,45 @@ const monA = el('mon-a');
 const monB = el('mon-b');
 const monTotal = el('mon-total');
 const monTemp = el('mon-temp');
+const monArea = el('mon-area');
 const monKc = el('mon-kc');
+const monPressureA = el('mon-pressure-a');
+const monPressureB = el('mon-pressure-b');
+const monPressure = el('mon-pressure');
+const monPressureIdeal = el('mon-pressure-ideal');
+const monPressureRatio = el('mon-pressure-ratio');
 const monTicks = el('mon-ticks');
 const perfParticles = el('perf-particles');
+
+/**
+ * How many ticks of wall impacts the pressure readout averages over. A
+ * single tick's impulses are far too sporadic to read: pressure is a mean
+ * over many collisions, so the gauge needs a window the way the speed
+ * histogram does.
+ */
+const PRESSURE_AVERAGE_TICKS = 20;
+
+const pressureHistory: { a: number; b: number }[] = [];
+
+/** Mean partial pressures over the window, in N/m. */
+function meanPressure(): { a: number; b: number } {
+  if (pressureHistory.length === 0) {
+    return {
+      a: 0,
+      b: 0,
+    };
+  }
+  let a = 0;
+  let b = 0;
+  for (const p of pressureHistory) {
+    a += p.a;
+    b += p.b;
+  }
+  return {
+    a: a / pressureHistory.length,
+    b: b / pressureHistory.length,
+  };
+}
 
 /** Three significant figures, matching the Python monitor's sig_figs=3. */
 function sig3(v: number): string {
@@ -315,7 +351,20 @@ function refreshMonitors(): void {
   monB.textContent = String(lastStats.countB);
   monTotal.textContent = String(lastStats.totalAEquivalent);
   monTemp.textContent = sig3(lastStats.measuredTemperature);
+  monArea.textContent = sig3(lastStats.areaNm2);
   monKc.textContent = sig3(lastStats.kc);
+
+  // Pressures are shown in mN/m: a dilute 2D gas at these densities sits
+  // around a few tenths, where a monolayer runs to tens.
+  const p = meanPressure();
+  const total = p.a + p.b;
+  const ideal = lastStats.idealPressure;
+  monPressureA.textContent = sig3(p.a * 1e3);
+  monPressureB.textContent = sig3(p.b * 1e3);
+  monPressure.textContent = sig3(total * 1e3);
+  monPressureIdeal.textContent = sig3(ideal * 1e3);
+  monPressureRatio.textContent = ideal > 0 && total > 0 ? (total / ideal).toFixed(3) : '—';
+
   monTicks.textContent = sim.ticks.toFixed(1);
 }
 
@@ -326,6 +375,16 @@ function sample(): void {
   lastStats = sim.stats();
   popPlot.push(sim.ticks, [lastStats.countA, lastStats.countB]);
   kcPlot.push(sim.ticks, [lastStats.kc]);
+
+  // Drain the wall gauge on the same once-per-tick cadence, so the window
+  // below covers PRESSURE_AVERAGE_TICKS of simulated time.
+  const p = sim.drainWallPressure();
+  if (p) {
+    pressureHistory.push(p);
+    while (pressureHistory.length > PRESSURE_AVERAGE_TICKS) {
+      pressureHistory.shift();
+    }
+  }
 
   tmpA.fill(0);
   tmpB.fill(0);
@@ -368,6 +427,8 @@ function resetDerived(): void {
   kcPlot.clear();
   speedPlot.clear();
   speedHistory.length = 0;
+  pressureHistory.length = 0;
+  sim.drainWallPressure();
   nextSampleTick = 1;
   hiSpeed = 3 * Math.sqrt((2 * params.temperature) / params.particleMass);
   sample();

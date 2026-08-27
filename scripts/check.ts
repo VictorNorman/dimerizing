@@ -348,6 +348,102 @@ console.log('\ndynamic equilibrium: same Kc from opposite starting compositions'
 }
 
 // ---------------------------------------------------------------------
+console.log('\nenergy closure: reactions move energy without creating it');
+{
+  // The point of the model: no bond energy, no thermal bath, so kinetic
+  // energy is conserved through dimerization and dissociation alike. This
+  // is the check the old bath-coupled model could not pass -- it leaked
+  // about a third of its energy away.
+  for (const [label, initialA, initialB] of [
+    ['from all A', 400, 0],
+    ['from all B', 0, 200],
+  ] as const) {
+    const sim = new Sim({
+      ...BASE,
+      initialA,
+      initialB,
+    });
+    const e0 = sim.stats().kineticEnergy;
+    let worst = 0;
+    let reactions = false;
+    for (let s = 0; s < 60000; s++) {
+      sim.step();
+      const drift = Math.abs(sim.stats().kineticEnergy - e0) / e0;
+      if (drift > worst) {
+        worst = drift;
+      }
+      if (s % 5000 === 0 && sim.stats().countB !== initialB) {
+        reactions = true;
+      }
+    }
+    check(`kinetic energy conserved through reactions, ${label}`, worst < 1e-9 && reactions,
+      `worst drift ${(worst * 100).toExponential(2)} %`);
+  }
+
+  // Temperature is now a result, not a setting: with energy fixed and the
+  // particle count changing, T = E/N must rise as A pairs up and fall as B
+  // splits. This is the behaviour the bath model got backwards.
+  const trend = (initialA: number, initialB: number) => {
+    const sim = new Sim({
+      ...BASE,
+      initialA,
+      initialB,
+    });
+    const t0 = sim.stats().measuredTemperature;
+    for (let s = 0; s < 60000; s++) {
+      sim.step();
+    }
+    return sim.stats().measuredTemperature / t0;
+  };
+  const warming = trend(400, 0);
+  const cooling = trend(0, 200);
+  check('T rises from all-A and falls from all-B', warming > 1.05 && cooling < 0.95,
+    `all-A x${warming.toFixed(2)}, all-B x${cooling.toFixed(2)}`);
+}
+
+// ---------------------------------------------------------------------
+console.log('\nideal gas law in 2D: wall impulse vs N k_B T / A');
+{
+  // Pressure is measured mechanically, by summing the momentum the walls
+  // absorb; the ideal figure is computed from the state. Nothing forces
+  // them to agree, so agreement to within the excluded-volume correction
+  // is a result about the model rather than a restatement of its inputs.
+  const sim = new Sim({
+    ...BASE,
+    initialA: 1000,
+    initialB: 0,
+    dimerizationChance: 0,
+    dissociationChance: 0,
+  });
+  for (let s = 0; s < 20000; s++) {
+    sim.step();
+  }
+  sim.drainWallPressure();
+  let measured = 0;
+  let ideal = 0;
+  let samples = 0;
+  for (let block = 0; block < 40; block++) {
+    for (let s = 0; s < 2000; s++) {
+      sim.step();
+    }
+    const p = sim.drainWallPressure();
+    if (p) {
+      measured += p.a + p.b;
+      ideal += sim.stats().idealPressure;
+      samples++;
+    }
+  }
+  measured /= samples;
+  ideal /= samples;
+  const ratio = measured / ideal;
+  // Hard disks push harder than an ideal gas by roughly 1 + 2*phi, the 2D
+  // second virial term, with phi the fraction of the box the disks cover.
+  check('wall pressure exceeds ideal by the excluded-volume term',
+    ratio > 1.0 && ratio < 1.15,
+    `measured/ideal = ${ratio.toFixed(4)} (${(measured * 1e3).toFixed(4)} vs ${(ideal * 1e3).toFixed(4)} mN/m)`);
+}
+
+// ---------------------------------------------------------------------
 console.log('\nthroughput  (the Python original manages ~274 sim-ticks/s at 200 A, ~51 at 1000 A)');
 for (const n of [200, 1000, 4000]) {
   const sim = new Sim({
